@@ -1,9 +1,0 @@
-# Garante Python 3.11 e instala o pacote em modo editável
-[phases.setup]
-nixPkgs = ["python311", "gcc"]
-
-[phases.install]
-cmds = ["python -m venv /opt/venv", ". /opt/venv/bin/activate && pip install --upgrade pip && pip install -e ."]
-
-[start]
-cmd = ". /opt/venv/bin/activate && streamlit run app/streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false"
