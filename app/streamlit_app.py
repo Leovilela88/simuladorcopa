@@ -88,6 +88,18 @@ st.markdown(
 
     div[data-testid="stHorizontalBlock"] { align-items: center; }
     [data-testid="stCaptionContainer"] { font-size:0.78rem; }
+
+    /* MOBILE: esconde caption longa, encolhe cards */
+    @media (max-width: 720px) {
+      .hero h1 { font-size: 1.4rem; }
+      .stat-bar { gap:8px; }
+      .stat .v { font-size:1.05rem; }
+      .stat .l { font-size:0.65rem; }
+      .match { padding:10px 12px; }
+      .score { font-size:1.35rem; }
+      .match-meta { display:none; }   /* esconde gols esperados/top3 */
+      .match-team-name { font-size:0.85rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -106,6 +118,19 @@ def load_model():
 
 params = load_model()
 rng = np.random.default_rng()
+
+
+@st.cache_data(show_spinner=False, max_entries=512)
+def cached_match_probs(home: str, away: str, neutral: bool, _model_mtime: float) -> dict:
+    return match_probs(params, home, away, neutral=neutral)
+
+
+@st.cache_data(show_spinner=False, max_entries=512)
+def cached_score_matrix(home: str, away: str, neutral: bool, _model_mtime: float):
+    return score_matrix(params, home, away, neutral=neutral)
+
+
+MTIME = MODEL_PATH.stat().st_mtime
 
 
 # ===== DADOS DA SESSÃO =====
@@ -144,24 +169,21 @@ st.markdown(
 
 # ===== HELPERS DE RENDER =====
 def render_team(iso3: str, side: str = "left", small: bool = False) -> str:
-    """HTML de um time (bandeira + nome)."""
     if not iso3 or iso3 not in BY_ISO3:
         return f'<span class="placeholder">{iso3 or "—"}</span>'
     name = name_pt(iso3)
     fl = flag_url(iso3, h=40)
     sz = 24 if small else 28
+    img = (f'<img src="{fl}" height="{sz}" alt="{iso3}" loading="lazy" '
+           f'style="border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,0.3);"/>')
+    n = f'<span class="match-team-name" style="font-weight:600;">{name}</span>'
     if side == "left":
         return (
             f'<div style="display:flex; align-items:center; gap:10px; justify-content:flex-end;">'
-            f'<span style="text-align:right; font-weight:600;">{name}</span>'
-            f'<img src="{fl}" height="{sz}" alt="{iso3}" '
-            f'style="border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,0.3);"/></div>'
+            f'{n}{img}</div>'
         )
     return (
-        f'<div style="display:flex; align-items:center; gap:10px;">'
-        f'<img src="{fl}" height="{sz}" alt="{iso3}" '
-        f'style="border-radius:2px; box-shadow:0 0 0 1px rgba(0,0,0,0.3);"/>'
-        f'<span style="font-weight:600;">{name}</span></div>'
+        f'<div style="display:flex; align-items:center; gap:10px;">{img}{n}</div>'
     )
 
 
@@ -180,7 +202,6 @@ def status_chip(m: Match) -> str:
 
 
 def render_match_card(m: Match):
-    """Card de partida — home esquerda, placar/× central, away direita, ações abaixo."""
     home_id = m.home_team if m.is_resolved() else m.home
     away_id = m.away_team if m.is_resolved() else m.away
     home_resolved = m.home_team in BY_ISO3
@@ -188,30 +209,31 @@ def render_match_card(m: Match):
     can_simulate = home_resolved and away_resolved
 
     klass = "match played" if m.played() else "match pending"
-    st.markdown(f'<div class="{klass}">', unsafe_allow_html=True)
-
-    # cabeçalho: chips
     chips = f"{stage_chip(m)} {status_chip(m)}"
     if m.venue:
         chips += f' <span style="opacity:0.5; font-size:0.75rem; margin-left:8px;">📍 {m.venue}</span>'
-    st.markdown(chips, unsafe_allow_html=True)
 
-    c1, c2, c3, c4, c5 = st.columns([2.6, 0.7, 0.4, 0.7, 2.6])
-    with c1:
-        st.markdown(render_team(home_id, "left"), unsafe_allow_html=True)
-    with c2:
-        score = (f'<div class="score" style="text-align:right">{m.home_score}</div>'
-                 if m.played() else '<div class="score" style="text-align:right; opacity:0.3">·</div>')
-        st.markdown(score, unsafe_allow_html=True)
-    with c3:
-        st.markdown('<div class="vs" style="text-align:center">×</div>',
-                    unsafe_allow_html=True)
-    with c4:
-        score = (f'<div class="score">{m.away_score}</div>'
-                 if m.played() else '<div class="score" style="opacity:0.3">·</div>')
-        st.markdown(score, unsafe_allow_html=True)
-    with c5:
-        st.markdown(render_team(away_id, "right"), unsafe_allow_html=True)
+    if m.played():
+        hs_html = f'<div class="score" style="text-align:right">{m.home_score}</div>'
+        as_html = f'<div class="score">{m.away_score}</div>'
+    else:
+        hs_html = '<div class="score" style="text-align:right; opacity:0.3">·</div>'
+        as_html = '<div class="score" style="opacity:0.3">·</div>'
+
+    # 1 markdown só pra todo o visual do card (drasticamente menos DOM)
+    st.markdown(
+        f'<div class="{klass}">'
+        f'<div style="margin-bottom:8px;">{chips}</div>'
+        f'<div style="display:grid; grid-template-columns: 1fr auto auto auto 1fr; '
+        f'gap:8px; align-items:center;">'
+        f'<div>{render_team(home_id, "left")}</div>'
+        f'{hs_html}'
+        f'<div class="vs" style="text-align:center; padding:0 6px">×</div>'
+        f'{as_html}'
+        f'<div>{render_team(away_id, "right")}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     # ações
     if m.played():
@@ -222,19 +244,21 @@ def render_match_card(m: Match):
             delete_result(m.id)
             st.rerun()
     elif can_simulate:
-        probs = match_probs(params, home_id, away_id, neutral=True)
+        probs = cached_match_probs(home_id, away_id, True, MTIME)
         eh, ea = probs["expected_goals"]
         top3 = " · ".join(f"**{r}-{c}** {p:.0%}" for r, c, p in probs["top3_scores"])
         ac1, ac2, ac3 = st.columns([3, 1, 1])
-        ac1.caption(
+        ac1.markdown(
+            f'<div class="match-meta" style="font-size:0.78rem; opacity:0.75;">'
             f"📊 {name_pt(home_id)} {probs['p_home']:.0%} · "
             f"empate {probs['p_draw']:.0%} · "
             f"{name_pt(away_id)} {probs['p_away']:.0%} · "
-            f"gols esp **{eh:.1f}:{ea:.1f}**  ·  {top3}"
+            f"gols esp <b>{eh:.1f}:{ea:.1f}</b>  ·  {top3}</div>",
+            unsafe_allow_html=True,
         )
         if ac2.button("🎲 Simular", key=f"sim_{m.id}", use_container_width=True,
                       type="primary"):
-            mat = score_matrix(params, home_id, away_id, neutral=True)
+            mat = cached_score_matrix(home_id, away_id, True, MTIME)
             flat = mat.ravel() / mat.sum()
             k = rng.choice(flat.size, p=flat)
             hs, as_ = divmod(int(k), mat.shape[1])
@@ -277,16 +301,17 @@ def render_match_card(m: Match):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ===== TABS =====
-tab_agenda, tab_groups, tab_bracket, tab_match, tab_about = st.tabs(
-    ["📅 Agenda", "🏆 Grupos", "🎯 Mata-Mata", "⚔️ Confronto", "ℹ️ Sobre"]
+# ===== NAVEGAÇÃO POR SEÇÃO (radio, não tabs — renderiza só o ativo) =====
+section = st.radio(
+    "Seção", ["📅 Agenda", "🏆 Grupos", "🎯 Mata-Mata", "⚔️ Confronto", "ℹ️ Sobre"],
+    horizontal=True, label_visibility="collapsed",
 )
 
 
 # ----- AGENDA -----
-with tab_agenda:
+if section == "📅 Agenda":
     fc1, fc2, fc3 = st.columns([1.5, 1.5, 1])
-    show_filter = fc1.radio("Mostrar", ["Todos", "Pendentes", "Jogados"],
+    show_filter = fc1.radio("Mostrar", ["Pendentes", "Todos", "Jogados"],
                              horizontal=True, label_visibility="collapsed")
     stage_filter = fc2.multiselect(
         "Fases", options=list(STAGE_LABEL.keys()),
@@ -302,7 +327,7 @@ with tab_agenda:
             for m in current:
                 if m.played() or not m.is_resolved():
                     continue
-                mat = score_matrix(params, m.home_team, m.away_team, neutral=True)
+                mat = cached_score_matrix(m.home_team, m.away_team, True, MTIME)
                 flat = mat.ravel() / mat.sum()
                 k = rng.choice(flat.size, p=flat)
                 hs, as_ = divmod(int(k), mat.shape[1])
@@ -341,7 +366,7 @@ with tab_agenda:
 
 
 # ----- GRUPOS -----
-with tab_groups:
+elif section == "🏆 Grupos":
     st.caption("Classificação com base nos jogos da fase de grupos.")
     groups_letters = "ABCDEFGHIJKL"
     for row_start in range(0, len(groups_letters), 2):
@@ -366,7 +391,7 @@ with tab_groups:
 
 
 # ----- MATA-MATA (BRACKET) -----
-with tab_bracket:
+elif section == "🎯 Mata-Mata":
     st.caption(
         "Os confrontos do mata-mata são preenchidos automaticamente "
         "conforme os jogos anteriores terminam. Use a aba **Agenda** para registrar resultados."
@@ -418,7 +443,7 @@ with tab_bracket:
 
 
 # ----- CONFRONTO -----
-with tab_match:
+elif section == "⚔️ Confronto":
     fifa_teams = sorted([t for t in params.teams if t in FIFA_CODES], key=name_pt)
     st.markdown("### Probabilidade de qualquer confronto")
     c1, c2 = st.columns(2)
@@ -468,7 +493,7 @@ with tab_match:
                 col.metric(f"{r} × {c}", f"{p:.1%}")
 
 
-with tab_about:
+elif section == "ℹ️ Sobre":
     st.markdown(
         """
         ### Como funciona
