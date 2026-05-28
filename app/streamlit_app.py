@@ -17,10 +17,12 @@ from simcopa.tournament.fixtures import (
     STAGE_LABEL,
     by_date,
     by_stage,
+    delete_result,
     load_results,
     matches_with_results,
     save_results,
     standings_for_group,
+    upsert_result,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -217,9 +219,7 @@ def render_match_card(m: Match):
         if ac1.button("✏️ Editar", key=f"edit_{m.id}", use_container_width=True):
             st.session_state[f"editing_{m.id}"] = True
         if ac2.button("🗑️ Limpar", key=f"clear_{m.id}", use_container_width=True):
-            results = load_results()
-            results.pop(m.id, None)
-            save_results(results)
+            delete_result(m.id)
             st.rerun()
     elif can_simulate:
         probs = match_probs(params, home_id, away_id, neutral=True)
@@ -247,9 +247,7 @@ def render_match_card(m: Match):
                 else:
                     res["home_pen"] = 4
                     res["away_pen"] = 5
-            results = load_results()
-            results[m.id] = res
-            save_results(results)
+            upsert_result(m.id, res)
             st.rerun()
         if ac3.button("✏️ Inserir", key=f"input_{m.id}", use_container_width=True):
             st.session_state[f"editing_{m.id}"] = True
@@ -267,15 +265,12 @@ def render_match_card(m: Match):
                                     key=f"as_{m.id}")
             save = fc3.form_submit_button("💾 Salvar (real)", use_container_width=True)
             if save:
-                results = load_results()
                 payload = {"home_score": int(hs), "away_score": int(as_),
                             "status": "actual"}
-                # mata-mata empate? pedir pênaltis
                 if m.stage != "GROUP" and int(hs) == int(as_):
                     payload["home_pen"] = 4
-                    payload["away_pen"] = 5  # default — usuário pode editar
-                results[m.id] = payload
-                save_results(results)
+                    payload["away_pen"] = 5
+                upsert_result(m.id, payload)
                 st.session_state[f"editing_{m.id}"] = False
                 st.rerun()
 

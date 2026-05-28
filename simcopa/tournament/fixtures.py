@@ -11,9 +11,19 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from simcopa.persistence import get_store
+
 DATA_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 FIXTURES_PATH = DATA_DIR / "fixtures_2026.json"
-RESULTS_PATH = DATA_DIR / "results.json"
+
+_store = None
+
+
+def _get_store():
+    global _store
+    if _store is None:
+        _store = get_store()
+    return _store
 
 # Atribuição dos 8 melhores 3ºs colocados → slots do R32 (regra FIFA 2026).
 # Ordem dos grupos dos 3ºs que avançam (de A-L) → mapeamento para confrontos.
@@ -80,14 +90,20 @@ def load_fixtures() -> list[Match]:
 
 
 def load_results() -> dict[int, dict]:
-    if not RESULTS_PATH.exists():
-        return {}
-    return {int(k): v for k, v in json.loads(RESULTS_PATH.read_text()).items()}
+    return _get_store().load()
 
 
 def save_results(results: dict[int, dict]) -> None:
-    RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    RESULTS_PATH.write_text(json.dumps({str(k): v for k, v in results.items()}, indent=2))
+    """Substitui TODOS os resultados (usado em bulk)."""
+    _get_store().save_all(results)
+
+
+def upsert_result(match_id: int, data: dict) -> None:
+    _get_store().upsert(match_id, data)
+
+
+def delete_result(match_id: int) -> None:
+    _get_store().delete(match_id)
 
 
 def _resolve_placeholders(matches: list[Match]) -> None:
