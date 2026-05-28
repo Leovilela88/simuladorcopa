@@ -74,6 +74,43 @@
     {"id": 69, "date": "2026-06-28", "group": "J", "md": 3, "home": "ALG", "away": "AUT"},
     {"id": 70, "date": "2026-06-28", "group": "J", "md": 3, "home": "JOR", "away": "ARG"},
     {"id": 71, "date": "2026-06-28", "group": "K", "md": 3, "home": "COL", "away": "POR"},
-    {"id": 72, "date": "2026-06-28", "group": "K", "md": 3, "home": "COD", "away": "UZB"}
+    {"id": 72, "date": "2026-06-28", "group": "K", "md": 3, "home": "COD", "away": "UZB"},
+
+    {"id": 73, "date": "2026-06-28", "stage": "R32", "venue": "Inglewood",      "home": "2A",      "away": "2B"},
+    {"id": 74, "date": "2026-06-29", "stage": "R32", "venue": "Foxborough",     "home": "1E",      "away": "3ABCDF"},
+    {"id": 75, "date": "2026-06-29", "stage": "R32", "venue": "Guadalajara",    "home": "1F",      "away": "2C"},
+    {"id": 76, "date": "2026-06-29", "stage": "R32", "venue": "Houston",        "home": "1C",      "away": "2F"},
+    {"id": 77, "date": "2026-06-30", "stage": "R32", "venue": "East Rutherford","home": "1I",      "away": "3CDFGH"},
+    {"id": 78, "date": "2026-06-30", "stage": "R32", "venue": "Arlington",      "home": "2E",      "away": "2I"},
+    {"id": 79, "date": "2026-06-30", "stage": "R32", "venue": "Cidade do México","home": "1A",     "away": "3CEFHI"},
+    {"id": 80, "date": "2026-07-01", "stage": "R32", "venue": "Atlanta",        "home": "1L",      "away": "3EHIJK"},
+    {"id": 81, "date": "2026-07-01", "stage": "R32", "venue": "Santa Clara",    "home": "1D",      "away": "3BEFIJ"},
+    {"id": 82, "date": "2026-07-01", "stage": "R32", "venue": "Seattle",        "home": "1G",      "away": "3AEHIJ"},
+    {"id": 83, "date": "2026-07-02", "stage": "R32", "venue": "Toronto",        "home": "2K",      "away": "2L"},
+    {"id": 84, "date": "2026-07-02", "stage": "R32", "venue": "Inglewood",      "home": "1H",      "away": "2J"},
+    {"id": 85, "date": "2026-07-02", "stage": "R32", "venue": "Vancouver",      "home": "1B",      "away": "3EFGIJ"},
+    {"id": 86, "date": "2026-07-03", "stage": "R32", "venue": "Miami",          "home": "1J",      "away": "2H"},
+    {"id": 87, "date": "2026-07-03", "stage": "R32", "venue": "Kansas City",    "home": "1K",      "away": "3DEIJL"},
+    {"id": 88, "date": "2026-07-03", "stage": "R32", "venue": "Arlington",      "home": "2D",      "away": "2G"},
+
+    {"id": 89, "date": "2026-07-04", "stage": "R16", "venue": "Philadelphia",   "home": "W74",     "away": "W77"},
+    {"id": 90, "date": "2026-07-04", "stage": "R16", "venue": "Houston",        "home": "W73",     "away": "W75"},
+    {"id": 91, "date": "2026-07-05", "stage": "R16", "venue": "East Rutherford","home": "W76",     "away": "W78"},
+    {"id": 92, "date": "2026-07-05", "stage": "R16", "venue": "Cidade do México","home": "W79",    "away": "W80"},
+    {"id": 93, "date": "2026-07-06", "stage": "R16", "venue": "Arlington",      "home": "W83",     "away": "W84"},
+    {"id": 94, "date": "2026-07-06", "stage": "R16", "venue": "Seattle",        "home": "W81",     "away": "W82"},
+    {"id": 95, "date": "2026-07-07", "stage": "R16", "venue": "Atlanta",        "home": "W86",     "away": "W88"},
+    {"id": 96, "date": "2026-07-07", "stage": "R16", "venue": "Vancouver",      "home": "W85",     "away": "W87"},
+
+    {"id": 97,  "date": "2026-07-09", "stage": "QF", "venue": "Foxborough",     "home": "W89",     "away": "W90"},
+    {"id": 98,  "date": "2026-07-10", "stage": "QF", "venue": "Inglewood",      "home": "W93",     "away": "W94"},
+    {"id": 99,  "date": "2026-07-11", "stage": "QF", "venue": "Miami",          "home": "W91",     "away": "W92"},
+    {"id": 100, "date": "2026-07-11", "stage": "QF", "venue": "Kansas City",    "home": "W95",     "away": "W96"},
+
+    {"id": 101, "date": "2026-07-14", "stage": "SF",    "venue": "Arlington",        "home": "W97",  "away": "W98"},
+    {"id": 102, "date": "2026-07-15", "stage": "SF",    "venue": "Atlanta",          "home": "W99",  "away": "W100"},
+    {"id": 103, "date": "2026-07-18", "stage": "THIRD", "venue": "Miami",            "home": "L101", "away": "L102"},
+    {"id": 104, "date": "2026-07-19", "stage": "FINAL", "venue": "East Rutherford",  "home": "W101", "away": "W102"}
   ]
 }
+
