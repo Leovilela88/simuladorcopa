@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# dados pesados — versionar só os processados pequenos
+data/raw/*.csv
+data/raw/*.zip
+!data/raw/.gitkeep
+
+# banco gerado
+*.sqlite
+*.sqlite3
+*.db
+
+# streamlit
+.streamlit/secrets.toml

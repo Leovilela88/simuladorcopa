@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simcopa"
+version = "0.1.0"
+description = "Simulador da Copa do Mundo 2026 — Dixon-Coles + Elo + Monte Carlo"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "requests>=2.31",
+    "python-dateutil>=2.8",
+    "streamlit>=1.30",
+    "altair>=5.0",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.4", "ipykernel"]
+scrape = ["soccerdata>=1.6", "beautifulsoup4>=4.12"]
+
+[project.scripts]
+simcopa = "simcopa.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
