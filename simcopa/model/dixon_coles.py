@@ -169,17 +169,30 @@ def score_matrix(params: DCParams, home: str, away: str, neutral: bool = True,
 
 
 def match_probs(params: DCParams, home: str, away: str, neutral: bool = True) -> dict:
-    """Probabilidades 1X2 e placar mais provável."""
+    """Probabilidades 1X2, gols esperados e top 3 placares."""
     mat = score_matrix(params, home, away, neutral=neutral)
     p_home = np.tril(mat, -1).sum()
     p_draw = np.trace(mat)
     p_away = np.triu(mat, 1).sum()
     i, j = np.unravel_index(mat.argmax(), mat.shape)
+    # gols esperados = soma de k*p(k)
+    n = mat.shape[0]
+    ks = np.arange(n)
+    e_home = float((ks[:, None] * mat).sum())
+    e_away = float((mat * ks[None, :]).sum())
+    # top 3 placares mais prováveis
+    flat_idx = np.argsort(mat.ravel())[::-1][:3]
+    top3 = []
+    for k in flat_idx:
+        r, c = divmod(int(k), mat.shape[1])
+        top3.append((r, c, float(mat[r, c])))
     return {
         "p_home": float(p_home),
         "p_draw": float(p_draw),
         "p_away": float(p_away),
         "mode_score": (int(i), int(j)),
+        "expected_goals": (e_home, e_away),
+        "top3_scores": top3,
     }
 
 

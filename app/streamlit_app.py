@@ -144,11 +144,14 @@ def render_match_card(m: Match):
                 st.rerun()
         else:
             probs = match_probs(params, m.home, m.away, neutral=True)
+            eh, ea = probs["expected_goals"]
+            top3 = " · ".join(f"**{r}-{c}** {p:.0%}" for r, c, p in probs["top3_scores"])
             ac1, ac2, ac3 = st.columns([2, 1, 1])
             ac1.caption(
-                f"📊 {probs['p_home']:.0%} · empate {probs['p_draw']:.0%} · "
-                f"{probs['p_away']:.0%} · placar provável "
-                f"**{probs['mode_score'][0]}×{probs['mode_score'][1]}**"
+                f"📊 {name_pt(m.home)} {probs['p_home']:.0%} · "
+                f"empate {probs['p_draw']:.0%} · "
+                f"{name_pt(m.away)} {probs['p_away']:.0%} · "
+                f"gols esperados **{eh:.1f}:{ea:.1f}**  ·  {top3}"
             )
             if ac2.button("🎲 Simular", key=f"sim_{m.id}", use_container_width=True,
                           type="primary"):

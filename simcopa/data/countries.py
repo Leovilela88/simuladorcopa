@@ -189,12 +189,16 @@ BY_ISO3: dict[str, dict] = {
 FIFA_CODES: set[str] = {m[0] for m in FIFA_MEMBERS}
 
 
+_VALID_FLAG_HEIGHTS = (20, 24, 40, 60, 80, 120, 240)
+
+
 def flag_url(iso3: str, h: int = 40) -> str:
-    """URL da bandeira via flagcdn (SVG)."""
+    """URL da bandeira via flagcdn (PNG). flagcdn só serve alguns tamanhos."""
     meta = BY_ISO3.get(iso3)
     if not meta:
         return ""
-    return f"https://flagcdn.com/h{h}/{meta['iso2']}.png"
+    valid = min(_VALID_FLAG_HEIGHTS, key=lambda v: abs(v - h))
+    return f"https://flagcdn.com/h{valid}/{meta['iso2']}.png"
 
 
 def name_pt(iso3: str) -> str:
