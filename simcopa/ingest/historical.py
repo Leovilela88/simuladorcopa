@@ -12,7 +12,7 @@ import requests
 
 from simcopa.db import DB_PATH, connect, init_db
 
-RAW_DIR = Path(__file__).resolve().parents[3] / "data" / "raw"
+RAW_DIR = Path(__file__).resolve().parents[2] / "data" / "raw"
 RESULTS_URL = (
     "https://raw.githubusercontent.com/martj42/international_results/master/results.csv"
 )

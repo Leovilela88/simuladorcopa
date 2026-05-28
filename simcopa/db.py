@@ -5,7 +5,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "simcopa.sqlite"
+DB_PATH = Path(__file__).resolve().parents[1] / "data" / "simcopa.sqlite"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS teams (

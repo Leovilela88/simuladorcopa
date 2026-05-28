@@ -60,19 +60,39 @@ class DCParams:
         return float(lam), float(mu)
 
 
+TOURNAMENT_WEIGHTS = {
+    "FIFA World Cup": 1.6,
+    "FIFA World Cup qualification": 1.0,
+    "UEFA Euro": 1.5,
+    "UEFA Euro qualification": 0.95,
+    "Copa América": 1.5,
+    "African Cup of Nations": 1.3,
+    "AFC Asian Cup": 1.3,
+    "CONCACAF Gold Cup": 1.2,
+    "UEFA Nations League": 1.1,
+    "Friendly": 0.5,
+}
+
+
 def fit_dixon_coles(
     matches: pd.DataFrame,
     xi: float = 0.0019,
     ref_date: pd.Timestamp | None = None,
     max_iter: int = 200,
+    use_tournament_weights: bool = True,
 ) -> DCParams:
-    """Ajusta Dixon-Coles em DataFrame com colunas:
+    """Ajusta Dixon-Coles. Colunas necessárias:
     date, home, away, home_score, away_score, neutral (0/1).
-    `xi` é o decay diário (0.0019 ≈ meia-vida ~365 dias)."""
+    Coluna opcional `tournament` ativa pesos por tipo de jogo."""
     df = matches.copy()
     df["date"] = pd.to_datetime(df["date"])
     ref = ref_date or df["date"].max()
-    df["w"] = np.exp(-xi * (ref - df["date"]).dt.days.clip(lower=0))
+    w_time = np.exp(-xi * (ref - df["date"]).dt.days.clip(lower=0))
+    if use_tournament_weights and "tournament" in df.columns:
+        w_tourn = df["tournament"].map(TOURNAMENT_WEIGHTS).fillna(0.8).to_numpy()
+    else:
+        w_tourn = np.ones(len(df))
+    df["w"] = w_time * w_tourn
 
     teams = sorted(set(df["home"]).union(df["away"]))
     n = len(teams)

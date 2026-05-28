@@ -23,12 +23,16 @@ def cmd_ingest(_args) -> None:
 
 def cmd_fit(args) -> None:
     from simcopa.model.dixon_coles import fit_dixon_coles
+    from simcopa.data.countries import FIFA_CODES
     with connect() as con:
         df = pd.read_sql(
-            "SELECT date, home, away, home_score, away_score, neutral "
+            "SELECT date, home, away, home_score, away_score, neutral, tournament "
             "FROM historical_matches WHERE date >= ?",
             con, params=(args.since,),
         )
+    n0 = len(df)
+    df = df[df["home"].isin(FIFA_CODES) & df["away"].isin(FIFA_CODES)]
+    print(f"Filtro FIFA: {n0} → {len(df)} jogos ({n0 - len(df)} removidos)")
     print(f"Ajustando Dixon-Coles em {len(df)} jogos desde {args.since}...")
     params = fit_dixon_coles(df, xi=args.xi)
     out = Path(args.out)
