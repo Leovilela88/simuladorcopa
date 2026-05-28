@@ -81,11 +81,12 @@ def fit_dixon_coles(
     # Vetor de parâmetros: [alpha_1..alpha_n, beta_1..beta_n, gamma, rho]
     # Restrição: sum(alpha) = 0 (identificabilidade) — aplicada via reparametrização.
     def unpack(x):
-        a = np.concatenate([x[: n - 1], [-x[: n - 1].sum()]])
-        b = x[n - 1 : 2 * n - 1]
-        b = np.concatenate([b, [-b.sum()]])
-        gamma = x[2 * n - 1]
-        rho = x[2 * n]
+        a_free = x[: n - 1]
+        b_free = x[n - 1 : 2 * (n - 1)]
+        a = np.concatenate([a_free, [-a_free.sum()]])
+        b = np.concatenate([b_free, [-b_free.sum()]])
+        gamma = x[2 * (n - 1)]
+        rho = x[2 * (n - 1) + 1]
         return a, b, gamma, rho
 
     home_i = df["home"].map(idx).to_numpy()
