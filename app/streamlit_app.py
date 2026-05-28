@@ -1,8 +1,9 @@
-"""Simulador Copa 2026 — UI profissional com bandeiras."""
+"""Simulador Copa 2026 — agenda jogo a jogo + simulação por partida."""
 from __future__ import annotations
 
 import json
 import pickle
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -10,36 +11,44 @@ import pandas as pd
 import streamlit as st
 
 from simcopa.data.countries import BY_ISO3, FIFA_CODES, flag_url, name_pt
-from simcopa.model.dixon_coles import match_probs
-from simcopa.tournament.simulate import monte_carlo
-from simcopa.tournament.structure import GROUPS
+from simcopa.model.dixon_coles import match_probs, score_matrix
+from simcopa.tournament.fixtures import (
+    Match,
+    by_date,
+    load_fixtures,
+    load_results,
+    matches_with_results,
+    save_results,
+    standings_for_group,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "data" / "processed" / "dc_params.pkl"
-GROUPS_PATH = ROOT / "data" / "processed" / "groups.json"
 
-st.set_page_config(
-    page_title="Simulador Copa 2026",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Simulador Copa 2026", page_icon="⚽", layout="wide",
+                   initial_sidebar_state="collapsed")
 
-# CSS custom para visual mais polido
 st.markdown(
     """
     <style>
-    .main > div { padding-top: 1rem; }
+    .main > div { padding-top: 1rem; max-width: 1100px; }
     h1 { letter-spacing: -1px; }
-    .stMetric { background: rgba(255,255,255,0.03); padding: 12px 16px;
-                border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); }
-    .team-row { display: flex; align-items: center; gap: 8px; }
-    .team-row img { border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,0.3); }
-    div[data-testid="stDataFrame"] td { vertical-align: middle; }
     .hero { background: linear-gradient(135deg, #064e3b 0%, #047857 50%, #10b981 100%);
-            padding: 24px 28px; border-radius: 16px; margin-bottom: 20px; }
-    .hero h1 { color: white; margin: 0; font-size: 2.2rem; }
-    .hero p { color: rgba(255,255,255,0.85); margin: 6px 0 0 0; font-size: 0.95rem; }
+            padding: 20px 24px; border-radius: 14px; margin-bottom: 18px; }
+    .hero h1 { color: white; margin: 0; font-size: 1.9rem; }
+    .hero p { color: rgba(255,255,255,0.85); margin: 6px 0 0 0; font-size: 0.9rem; }
+    .match-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+                  border-radius: 12px; padding: 14px 18px; margin-bottom: 10px; }
+    .match-played { border-left: 3px solid #10b981; }
+    .match-pending { border-left: 3px solid rgba(255,255,255,0.15); }
+    .group-chip { display:inline-block; padding:2px 8px; border-radius:8px;
+                  background: rgba(16,185,129,0.15); color:#10b981; font-size:0.75rem;
+                  font-weight:600; letter-spacing:0.5px; }
+    .day-header { font-size:1.1rem; font-weight:700; margin: 18px 0 10px 0;
+                  color:#10b981; }
+    .score-big { font-size: 1.6rem; font-weight: 700; padding: 0 14px; }
+    .vs-mid { opacity: 0.5; font-weight: 600; }
+    div[data-testid="stHorizontalBlock"] { align-items: center; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -49,169 +58,233 @@ if not MODEL_PATH.exists():
     st.error("Modelo não encontrado. Rode: `simcopa init && simcopa ingest && simcopa fit`")
     st.stop()
 
-params = pickle.loads(MODEL_PATH.read_bytes())
 
-# só seleções FIFA na UI
-fifa_teams = [t for t in params.teams if t in FIFA_CODES]
-fifa_teams.sort(key=lambda t: name_pt(t))
-
-
-@st.cache_data(show_spinner=False)
-def cached_monte_carlo(groups_signature: str, n_sims: int, model_mtime: float) -> pd.DataFrame:
-    """Roda Monte Carlo com cache pra economizar CPU no Railway."""
-    groups = json.loads(groups_signature)
-    return monte_carlo(params, groups, n_sims=n_sims)
+@st.cache_resource
+def load_model():
+    return pickle.loads(MODEL_PATH.read_bytes())
 
 
-# Hero
+params = load_model()
+rng = np.random.default_rng()
+
+
+# ===== HERO =====
+all_matches = matches_with_results()
+n_played = sum(1 for m in all_matches if m.played())
+total = len(all_matches)
 st.markdown(
-    '<div class="hero">'
-    "<h1>⚽ Simulador Copa do Mundo 2026</h1>"
-    "<p>Modelo Dixon-Coles + Monte Carlo · 48 seleções FIFA · "
-    f"calibrado com {len(params.teams)} times e pesos por tipo de jogo</p>"
-    "</div>",
+    f'<div class="hero">'
+    f"<h1>⚽ Simulador Copa do Mundo 2026</h1>"
+    f"<p>Agenda jogo a jogo · {n_played}/{total} partidas registradas · "
+    f"modelo Dixon-Coles</p>"
+    f"</div>",
     unsafe_allow_html=True,
 )
 
-# ===== SIDEBAR: GRUPOS =====
-with st.sidebar:
-    st.markdown("### 🏆 Grupos da Copa")
-    st.caption("Selecione os 4 times de cada grupo (A–L).")
 
-    if GROUPS_PATH.exists():
-        groups = json.loads(GROUPS_PATH.read_text())
-    else:
-        groups = {g: ["", "", "", ""] for g in GROUPS}
+def render_match_card(m: Match):
+    """Renderiza 1 partida com bandeiras, placar (ou botão), e ações."""
+    container = st.container()
+    with container:
+        status_class = "match-played" if m.played() else "match-pending"
+        st.markdown(
+            f'<div class="match-card {status_class}">'
+            f'<span class="group-chip">Grupo {m.group} · Rodada {m.md}</span>',
+            unsafe_allow_html=True,
+        )
+        c1, c2, c3, c4, c5 = st.columns([2.4, 0.7, 0.5, 0.7, 2.4])
+        with c1:
+            st.markdown(
+                f'<div style="display:flex; align-items:center; gap:10px; justify-content:flex-end;">'
+                f'<span style="text-align:right; font-weight:600;">{name_pt(m.home)}</span>'
+                f'<img src="{flag_url(m.home, h=36)}" height="28"/>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with c2:
+            if m.played():
+                st.markdown(
+                    f'<div class="score-big" style="text-align:right">{m.home_score}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<div class="score-big" style="text-align:right">·</div>',
+                            unsafe_allow_html=True)
+        with c3:
+            st.markdown('<div class="vs-mid" style="text-align:center">×</div>',
+                        unsafe_allow_html=True)
+        with c4:
+            if m.played():
+                st.markdown(
+                    f'<div class="score-big">{m.away_score}</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown('<div class="score-big">·</div>', unsafe_allow_html=True)
+        with c5:
+            st.markdown(
+                f'<div style="display:flex; align-items:center; gap:10px;">'
+                f'<img src="{flag_url(m.away, h=36)}" height="28"/>'
+                f'<span style="font-weight:600;">{name_pt(m.away)}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
-    team_options = [""] + fifa_teams
-    edited = {}
-    # 2 grupos por linha (6 linhas × 2)
-    for row_start in range(0, len(GROUPS), 2):
-        cols = st.columns(2)
-        for col_i, gi in enumerate(range(row_start, min(row_start + 2, len(GROUPS)))):
-            g = GROUPS[gi]
-            with cols[col_i]:
-                st.markdown(f"**Grupo {g}**")
-                slots = []
-                for i in range(4):
-                    cur = groups.get(g, ["", "", "", ""])[i]
-                    idx = team_options.index(cur) if cur in team_options else 0
-                    sel = st.selectbox(
-                        f"{g}{i+1}", team_options, index=idx,
-                        format_func=lambda t: f"{name_pt(t)}" if t else "—",
-                        key=f"sel_{g}_{i}", label_visibility="collapsed",
-                    )
-                    slots.append(sel)
-                edited[g] = slots
+        # ações
+        if m.played():
+            badge = "🎲 Simulado" if m.status == "simulated" else "✅ Resultado real"
+            ac1, ac2, ac3 = st.columns([2, 1, 1])
+            ac1.caption(badge)
+            if ac2.button("✏️ Editar", key=f"edit_{m.id}", use_container_width=True):
+                st.session_state[f"editing_{m.id}"] = True
+            if ac3.button("🗑️ Limpar", key=f"clear_{m.id}", use_container_width=True):
+                results = load_results()
+                results.pop(m.id, None)
+                save_results(results)
+                st.rerun()
+        else:
+            probs = match_probs(params, m.home, m.away, neutral=True)
+            ac1, ac2, ac3 = st.columns([2, 1, 1])
+            ac1.caption(
+                f"📊 {probs['p_home']:.0%} · empate {probs['p_draw']:.0%} · "
+                f"{probs['p_away']:.0%} · placar provável "
+                f"**{probs['mode_score'][0]}×{probs['mode_score'][1]}**"
+            )
+            if ac2.button("🎲 Simular", key=f"sim_{m.id}", use_container_width=True,
+                          type="primary"):
+                mat = score_matrix(params, m.home, m.away, neutral=True)
+                flat = mat.ravel() / mat.sum()
+                k = rng.choice(flat.size, p=flat)
+                hs, as_ = divmod(int(k), mat.shape[1])
+                results = load_results()
+                results[m.id] = {"home_score": hs, "away_score": as_,
+                                  "status": "simulated"}
+                save_results(results)
+                st.rerun()
+            if ac3.button("✏️ Inserir", key=f"input_{m.id}", use_container_width=True):
+                st.session_state[f"editing_{m.id}"] = True
 
-    if st.button("💾 Salvar grupos", use_container_width=True):
-        GROUPS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        GROUPS_PATH.write_text(json.dumps(edited, indent=2))
-        st.success("Grupos salvos.")
+        # form de edição manual
+        if st.session_state.get(f"editing_{m.id}"):
+            with st.form(key=f"form_{m.id}"):
+                fc1, fc2, fc3 = st.columns([1, 1, 1])
+                hs = fc1.number_input(
+                    name_pt(m.home), min_value=0, max_value=15,
+                    value=m.home_score if m.home_score is not None else 0,
+                    key=f"hs_{m.id}",
+                )
+                as_ = fc2.number_input(
+                    name_pt(m.away), min_value=0, max_value=15,
+                    value=m.away_score if m.away_score is not None else 0,
+                    key=f"as_{m.id}",
+                )
+                save = fc3.form_submit_button("💾 Salvar (real)", use_container_width=True)
+                if save:
+                    results = load_results()
+                    results[m.id] = {"home_score": int(hs), "away_score": int(as_),
+                                      "status": "actual"}
+                    save_results(results)
+                    st.session_state[f"editing_{m.id}"] = False
+                    st.rerun()
 
-    st.divider()
-    n_sims = st.select_slider(
-        "Simulações Monte Carlo",
-        options=[1000, 2500, 5000, 10_000, 25_000, 50_000],
-        value=10_000,
-    )
-    run = st.button("🎲 Rodar simulação", type="primary", use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ===== TABS PRINCIPAIS =====
-tab_probs, tab_match, tab_ranking, tab_about = st.tabs(
-    ["📊 Probabilidades", "⚔️ Confronto direto", "🏅 Ranking", "ℹ️ Sobre"]
+tab_agenda, tab_groups, tab_match, tab_about = st.tabs(
+    ["📅 Agenda", "🏆 Grupos", "⚔️ Confronto", "ℹ️ Sobre"]
 )
 
 
-def render_team_html(iso3: str, h: int = 24) -> str:
-    url = flag_url(iso3, h=h * 2)
-    return (
-        f'<div class="team-row">'
-        f'<img src="{url}" height="{h}" alt="{iso3}"/>'
-        f'<span><b>{name_pt(iso3)}</b> <span style="opacity:0.6">({iso3})</span></span>'
-        f'</div>'
+# ===== AGENDA =====
+with tab_agenda:
+    cont_top, cont_bulk = st.columns([3, 1])
+    with cont_top:
+        st.caption(
+            "Cada partida tem probabilidades do modelo. Clique **Simular** para sortear um placar "
+            "pela distribuição prevista, ou **Inserir** pra colocar o resultado real."
+        )
+    with cont_bulk:
+        if st.button("🎲 Simular todos os pendentes", use_container_width=True):
+            results = load_results()
+            for m in all_matches:
+                if not m.played():
+                    mat = score_matrix(params, m.home, m.away, neutral=True)
+                    flat = mat.ravel() / mat.sum()
+                    k = rng.choice(flat.size, p=flat)
+                    hs, as_ = divmod(int(k), mat.shape[1])
+                    results[m.id] = {"home_score": hs, "away_score": as_,
+                                      "status": "simulated"}
+            save_results(results)
+            st.rerun()
+
+    # filtros
+    fc1, fc2 = st.columns([1, 1])
+    show_filter = fc1.radio("Mostrar", ["Todos", "Pendentes", "Jogados"],
+                             horizontal=True, label_visibility="collapsed")
+    group_filter = fc2.multiselect(
+        "Grupos", options=sorted({m.group for m in all_matches}),
+        placeholder="Filtrar por grupo (vazio = todos)",
     )
 
-
-with tab_probs:
-    valid = all(all(t for t in v) for v in edited.values())
-    if not valid:
-        st.info(
-            "👈 Preencha os **48 times** nos 12 grupos para rodar a simulação. "
-            "Use o seletor da barra lateral."
+    grouped = by_date(all_matches)
+    for date_str, day_matches in grouped.items():
+        # aplicar filtros
+        day_matches = [m for m in day_matches
+                       if (not group_filter or m.group in group_filter)
+                       and (show_filter == "Todos"
+                            or (show_filter == "Pendentes" and not m.played())
+                            or (show_filter == "Jogados" and m.played()))]
+        if not day_matches:
+            continue
+        dt = datetime.fromisoformat(date_str)
+        dia_semana = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][dt.weekday()]
+        st.markdown(
+            f'<div class="day-header">📅 {dia_semana} · {dt.strftime("%d/%m/%Y")}'
+            f' <span style="opacity:0.5; font-weight:400; font-size:0.9rem">'
+            f'({len(day_matches)} jogo{"s" if len(day_matches) > 1 else ""})</span>'
+            f'</div>',
+            unsafe_allow_html=True,
         )
-    elif run or "last_probs" in st.session_state:
-        if run:
-            with st.spinner(f"Rodando {n_sims:,} torneios..."):
-                df = cached_monte_carlo(
-                    json.dumps(edited, sort_keys=True),
-                    int(n_sims),
-                    MODEL_PATH.stat().st_mtime,
-                )
-            st.session_state["last_probs"] = df
-        df = st.session_state["last_probs"].copy()
-        df["flag"] = df["team"].map(lambda t: flag_url(t, h=40))
-        df["Seleção"] = df["team"].map(name_pt)
-        cols_pct = ["p_group_1", "p_advance", "p_r16", "p_qf", "p_sf", "p_final", "p_champion"]
-        labels = {
-            "p_group_1": "1º grupo", "p_advance": "Passar fase",
-            "p_r16": "Oitavas", "p_qf": "Quartas", "p_sf": "Semi",
-            "p_final": "Final", "p_champion": "🏆 Campeão",
-        }
+        for m in sorted(day_matches, key=lambda x: (x.group, x.id)):
+            render_match_card(m)
 
-        # Pódio
-        top3 = df.head(3)
-        cols = st.columns(3)
-        for i, (_, row) in enumerate(top3.iterrows()):
-            medal = ["🥇", "🥈", "🥉"][i]
-            with cols[i]:
-                st.markdown(
-                    f'<div style="text-align:center; padding:16px; '
-                    f'background:rgba(255,255,255,0.04); border-radius:12px;">'
-                    f'<div style="font-size:2rem">{medal}</div>'
-                    f'<img src="{flag_url(row["team"], h=60)}" height="48"/>'
-                    f'<div style="font-size:1.15rem; font-weight:600; margin-top:8px">'
-                    f'{name_pt(row["team"])}</div>'
-                    f'<div style="font-size:1.4rem; color:#10b981; font-weight:700; margin-top:4px">'
-                    f'{row["p_champion"]:.1%}</div>'
-                    f'<div style="opacity:0.6; font-size:0.85rem">campeão</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
+
+# ===== GRUPOS / TABELA =====
+with tab_groups:
+    st.caption("Classificação dos grupos com base nos jogos já registrados.")
+    groups_letters = sorted({m.group for m in all_matches})
+    for row_start in range(0, len(groups_letters), 2):
+        cols = st.columns(2)
+        for ci, gi in enumerate(range(row_start, min(row_start + 2, len(groups_letters)))):
+            g = groups_letters[gi]
+            with cols[ci]:
+                st.markdown(f"#### Grupo {g}")
+                rows = standings_for_group(g, all_matches)
+                df = pd.DataFrame([
+                    {"": flag_url(r["team"], h=30), "Seleção": name_pt(r["team"]),
+                     "P": r["P"], "V": r["V"], "E": r["E"], "D": r["D"],
+                     "GP": r["GP"], "GC": r["GC"], "SG": r["SG"], "Pts": r["Pts"]}
+                    for r in rows
+                ])
+                df.index = range(1, len(df) + 1)
+                st.dataframe(
+                    df,
+                    column_config={"": st.column_config.ImageColumn("", width="small")},
+                    use_container_width=True, height=190,
                 )
 
-        st.markdown("### Probabilidades por seleção")
-        show = df[["flag", "Seleção"] + cols_pct].rename(columns=labels)
-        st.dataframe(
-            show,
-            column_config={
-                "flag": st.column_config.ImageColumn("", width="small"),
-                "Seleção": st.column_config.TextColumn("Seleção", width="medium"),
-                **{labels[c]: st.column_config.ProgressColumn(
-                    labels[c], format="%.1f%%", min_value=0, max_value=1)
-                   for c in cols_pct},
-            },
-            hide_index=True,
-            use_container_width=True,
-            height=min(48 * 25 + 38, 720),
-        )
 
+# ===== CONFRONTO LIVRE =====
 with tab_match:
+    fifa_teams = sorted([t for t in params.teams if t in FIFA_CODES], key=name_pt)
     st.markdown("### Probabilidade de um confronto isolado")
     c1, c2 = st.columns(2)
-    h = c1.selectbox(
-        "🏠 Time A", fifa_teams, key="match_h",
-        format_func=lambda t: name_pt(t),
-    )
-    a = c2.selectbox(
-        "🛫 Time B", fifa_teams, key="match_a",
-        format_func=lambda t: name_pt(t),
-        index=min(1, len(fifa_teams) - 1),
-    )
+    h = c1.selectbox("🏠 Time A", fifa_teams, key="match_h", format_func=name_pt)
+    a = c2.selectbox("🛫 Time B", fifa_teams, key="match_a", format_func=name_pt,
+                      index=min(1, len(fifa_teams) - 1))
     neutral = st.checkbox("Campo neutro", value=True)
     if h and a and h != a:
         probs = match_probs(params, h, a, neutral=neutral)
-
         c_l, c_m, c_r = st.columns([1, 1, 1])
         with c_l:
             st.markdown(
@@ -243,72 +316,23 @@ with tab_match:
                 unsafe_allow_html=True,
             )
 
-with tab_ranking:
-    st.markdown("### Força das seleções (modelo Dixon-Coles)")
-    st.caption("Força líquida = ataque (α) − defesa (β). Quanto maior, melhor.")
-    rows = []
-    for i, t in enumerate(params.teams):
-        if t not in FIFA_CODES:
-            continue
-        rows.append({
-            "team": t,
-            "flag": flag_url(t, h=40),
-            "Seleção": name_pt(t),
-            "Confederação": BY_ISO3[t]["confederation"],
-            "Ataque (α)": float(params.alpha[i]),
-            "Defesa (β)": float(params.beta[i]),
-            "Força líquida": float(params.alpha[i] - params.beta[i]),
-        })
-    rk = pd.DataFrame(rows).sort_values("Força líquida", ascending=False).reset_index(drop=True)
-    rk.index = rk.index + 1
-    st.dataframe(
-        rk.drop(columns=["team"]),
-        column_config={
-            "flag": st.column_config.ImageColumn("", width="small"),
-            "Ataque (α)": st.column_config.NumberColumn(format="%+.2f"),
-            "Defesa (β)": st.column_config.NumberColumn(format="%+.2f"),
-            "Força líquida": st.column_config.ProgressColumn(
-                "Força líquida", format="%+.2f",
-                min_value=float(rk["Força líquida"].min()),
-                max_value=float(rk["Força líquida"].max()),
-            ),
-        },
-        use_container_width=True,
-        height=720,
-    )
 
 with tab_about:
     st.markdown(
         """
         ### Como funciona
 
-        **Modelo:** Dixon-Coles (1997) com decay temporal e pesos por tipo de torneio.
+        Cada jogo tem uma **matriz de probabilidades de placar** calculada pelo modelo Dixon-Coles
+        (ataque/defesa por seleção, decay temporal, correção de placares baixos).
 
-        - **α (ataque)** e **β (defesa)** por seleção, calibrados em ~3 mil jogos
-          entre seleções FIFA desde 2018.
-        - **Decay** `xi = 0.0019/dia` (meia-vida ~1 ano) — jogos recentes pesam mais.
-        - **Pesos por torneio** equilibram CONMEBOL (round-robin denso) vs UEFA
-          (qualifying com grupos fracos):
-          - Copa do Mundo: ×1.6
-          - Euro/Copa América: ×1.5
-          - Eliminatórias: ×1.0
-          - Nations League: ×1.1
-          - Amistosos: ×0.5
-        - **Correção Dixon-Coles** ajusta probabilidade de placares baixos (0-0, 1-0, 1-1).
-        - **Monte Carlo:** simulamos o torneio N vezes e contamos quantas vezes cada
-          time chega em cada fase.
+        - **Simular esta partida**: sorteia um placar pela distribuição prevista.
+        - **Inserir**: você digita o placar real quando o jogo acontecer.
+        - **Simular todos pendentes**: roda uma simulação inteira da fase de grupos.
+        - A **classificação** dos grupos atualiza com base nos jogos registrados.
 
-        ### Dados
-
-        - 49.257 jogos internacionais 1872→hoje (Mart Jürisoo, atualizado).
-        - Filtro: apenas seleções FIFA (211 membros).
-        - Inclui amistosos e Nations League, mas com peso menor que torneios oficiais.
-
-        ### Roadmap
-
-        - Chaveamento oficial do mata-mata (FIFA 2026)
-        - Elo ratings como prior bayesiano
-        - Forma individual dos jogadores nos clubes (FBref/Transfermarkt)
-        - Inserção de placares ao vivo durante a Copa, com recálculo das fases abertas
+        **Próximos passos:**
+        - Mata-mata (R32 → Final) com base nos classificados
+        - Persistência em volume Railway (resultados sobrevivem ao redeploy)
+        - Ajuste por jogadores convocados e forma recente nos clubes
         """
     )
