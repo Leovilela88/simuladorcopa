@@ -59,6 +59,8 @@ COUNTRY_TO_ISO3 = {
     "Russia": "RUS", "Romania": "ROU", "Bulgaria": "BUL", "Albania": "ALB",
     "North Macedonia": "MKD", "Bosnia and Herzegovina": "BIH", "Montenegro": "MNE",
     "Georgia": "GEO", "Armenia": "ARM", "Azerbaijan": "AZE",
+    "Cape Verde": "CPV", "Cabo Verde": "CPV", "Czechia": "CZE",
+    "Republic of the Congo": "CGO", "Kosovo": "KVX",
 }
 
 
